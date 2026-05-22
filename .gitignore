@@ -3,3 +3,4 @@ data/db.json
 .env
 .DS_Store
 *.log
+maintenance-logs/
