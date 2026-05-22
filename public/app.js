@@ -61,6 +61,29 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => els.toast.classList.remove('show'), 2400);
 }
 
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const input = document.createElement('textarea');
+  input.value = text;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.left = '-9999px';
+  input.style.top = '0';
+  document.body.appendChild(input);
+  input.select();
+  input.setSelectionRange(0, input.value.length);
+
+  try {
+    return document.execCommand('copy');
+  } finally {
+    document.body.removeChild(input);
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { 'content-type': 'application/json', ...(options.headers || {}) },
@@ -582,8 +605,8 @@ els.surveyList.addEventListener('click', async event => {
     }
 
     if (target.dataset.action === 'copy-link') {
-      await navigator.clipboard.writeText(target.dataset.link);
-      showToast('填写链接已复制');
+      const copied = await copyText(target.dataset.link);
+      showToast(copied ? '填写链接已复制' : `复制失败，请手动复制：${target.dataset.link}`);
     }
   } catch (error) {
     showToast(error.message);
