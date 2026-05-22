@@ -67,6 +67,11 @@ async function request(pathname, options = {}) {
   const responses = await request(`/api/surveys/${survey.id}/responses`);
   if (responses.length !== 1) throw new Error('response was not saved');
 
+  const analysis = await request(`/api/surveys/${survey.id}/analysis`);
+  if (analysis.overview.responseCount !== 1 || !analysis.questions.length) {
+    throw new Error('analysis endpoint content mismatch');
+  }
+
   const csv = await request(`/api/surveys/${survey.id}/export.csv`);
   if (!csv.includes('课程是否有帮助') || !csv.includes('讲解|练习')) {
     throw new Error('csv export content mismatch');

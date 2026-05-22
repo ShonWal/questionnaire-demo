@@ -1,7 +1,8 @@
 ﻿const state = {
   questions: [],
   surveys: [],
-  activeSurvey: null
+  activeSurvey: null,
+  activeAnalysisSurveyId: null
 };
 
 const typeLabels = {
@@ -31,6 +32,10 @@ const els = {
   responsesTitle: document.querySelector('#responsesTitle'),
   responsesTable: document.querySelector('#responsesTable'),
   exportLink: document.querySelector('#exportLink'),
+  analysisPanel: document.querySelector('#analysisPanel'),
+  analysisTitle: document.querySelector('#analysisTitle'),
+  analysisContent: document.querySelector('#analysisContent'),
+  refreshAnalysis: document.querySelector('#refreshAnalysis'),
   fillEmpty: document.querySelector('#fillEmpty'),
   fillForm: document.querySelector('#fillForm'),
   toast: document.querySelector('#toast')
@@ -178,6 +183,7 @@ function renderDashboard() {
           <button class="primary" data-action="open-fill" data-survey-id="${survey.id}">填写</button>
           <button class="secondary" data-action="copy-link" data-link="${escapeHtml(fillLink)}">复制链接</button>
           <button class="secondary" data-action="view-responses" data-survey-id="${survey.id}">查看回复</button>
+          <button class="secondary" data-action="view-analysis" data-survey-id="${survey.id}">数据分析</button>
           <a class="ghost link-button" href="/api/surveys/${survey.id}/export.csv">导出 CSV</a>
         </div>
       </article>
@@ -217,6 +223,166 @@ async function viewResponses(surveyId) {
         `).join('')}
       </tbody>
     </table>
+  `;
+}
+
+async function viewAnalysis(surveyId) {
+  const analysis = await api(`/api/surveys/${surveyId}/analysis`);
+  state.activeAnalysisSurveyId = surveyId;
+  els.analysisPanel.classList.remove('hidden');
+  els.analysisTitle.textContent = `${analysis.survey.title}：数据分析`;
+  els.analysisContent.innerHTML = renderAnalysis(analysis);
+  els.analysisPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderAnalysis(analysis) {
+  const overview = analysis.overview;
+  return `
+    <div class="analysis-grid">
+      ${renderMetricCard('回复数', overview.responseCount)}
+      ${renderMetricCard('题目数', overview.questionCount)}
+      ${renderMetricCard('可数值题项', overview.numericQuestionCount)}
+      ${renderMetricCard('完成率', `${overview.completionRate}%`)}
+    </div>
+
+    <div class="analysis-section">
+      <h3>智能结论</h3>
+      <div class="insight-list">
+        ${analysis.insights.map(item => `<p>${escapeHtml(item)}</p>`).join('')}
+      </div>
+    </div>
+
+    <div class="analysis-section">
+      <h3>描述性统计</h3>
+      ${renderQuestionAnalysis(analysis.questions)}
+    </div>
+
+    <div class="analysis-section">
+      <h3>信度分析</h3>
+      ${renderReliability(analysis.reliability)}
+    </div>
+
+    <div class="analysis-section">
+      <h3>相关性分析</h3>
+      ${renderCorrelations(analysis.correlations)}
+    </div>
+  `;
+}
+
+function renderMetricCard(label, value) {
+  return `
+    <div class="analysis-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function renderQuestionAnalysis(questions) {
+  if (!questions.length) {
+    return '<p class="meta">暂无题目。</p>';
+  }
+
+  return questions.map(question => {
+    const details = question.frequencies
+      ? renderFrequencyTable(question.frequencies, question.type === 'multiple')
+      : renderTextSummary(question);
+    const numeric = question.numeric
+      ? `<p class="meta">均值 ${question.numeric.mean ?? '-'} · 标准差 ${question.numeric.std ?? '-'} · 最小值 ${question.numeric.min ?? '-'} · 最大值 ${question.numeric.max ?? '-'}</p>`
+      : '';
+
+    return `
+      <article class="analysis-question">
+        <div class="analysis-question-head">
+          <strong>${escapeHtml(question.title)}</strong>
+          <span class="chip">${typeLabels[question.type] || question.type}</span>
+        </div>
+        <p class="meta">有效回答 ${question.answered} · 缺失 ${question.missing}</p>
+        ${numeric}
+        ${details}
+      </article>
+    `;
+  }).join('');
+}
+
+function renderFrequencyTable(rows, isMultiple = false) {
+  if (!rows.length) return '<p class="meta">暂无可统计选项。</p>';
+  return `
+    <div class="table-wrap compact">
+      <table>
+        <thead>
+          <tr>
+            <th>选项</th>
+            <th>次数</th>
+            <th>${isMultiple ? '占回复比例' : '占比'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr>
+              <td>${escapeHtml(row.label)}</td>
+              <td>${row.count}</td>
+              <td>${isMultiple ? row.responsePercent : row.percent}%</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderTextSummary(question) {
+  if (!question.topValues?.length) {
+    return '<p class="meta">暂无文本内容。</p>';
+  }
+  return `
+    <p class="meta">不同答案 ${question.uniqueCount} 个，展示出现次数最高的答案。</p>
+    <div class="text-answer-list">
+      ${question.topValues.map(item => `<span>${escapeHtml(item.label)} <em>${item.count}</em></span>`).join('')}
+    </div>
+  `;
+}
+
+function renderReliability(reliability) {
+  if (reliability.cronbachAlpha === null) {
+    return "<p class=\"meta\">可数值题项不足或样本量不足，暂不能计算 Cronbach's alpha。建议至少包含 2 个评分题，并收集 2 份以上有效回复。</p>";
+  }
+
+  return `
+    <div class="analysis-grid">
+      ${renderMetricCard("Cronbach's alpha", reliability.cronbachAlpha)}
+      ${renderMetricCard('题项数', reliability.itemCount)}
+      ${renderMetricCard('完整样本', reliability.sampleSize)}
+    </div>
+  `;
+}
+
+function renderCorrelations(correlations) {
+  if (!correlations.length) {
+    return '<p class="meta">可数值题项少于 2 个，暂不生成 Pearson 相关结果。</p>';
+  }
+
+  return `
+    <div class="table-wrap compact">
+      <table>
+        <thead>
+          <tr>
+            <th>题项 A</th>
+            <th>题项 B</th>
+            <th>Pearson r</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${correlations.map(item => `
+            <tr>
+              <td>${escapeHtml(item.x)}</td>
+              <td>${escapeHtml(item.y)}</td>
+              <td>${item.r ?? '-'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -309,6 +475,15 @@ document.querySelector('#refreshDashboard').addEventListener('click', async () =
   showToast('已刷新');
 });
 
+els.refreshAnalysis.addEventListener('click', async () => {
+  if (!state.activeAnalysisSurveyId) {
+    showToast('请先选择一份问卷进行分析');
+    return;
+  }
+  await viewAnalysis(state.activeAnalysisSurveyId);
+  showToast('已重新生成分析结果');
+});
+
 els.questions.addEventListener('input', event => {
   const target = event.target;
   const id = target.dataset.questionId;
@@ -399,6 +574,11 @@ els.surveyList.addEventListener('click', async event => {
     if (target.dataset.action === 'view-responses') {
       await viewResponses(target.dataset.surveyId);
       showToast('已加载回复信息');
+    }
+
+    if (target.dataset.action === 'view-analysis') {
+      await viewAnalysis(target.dataset.surveyId);
+      showToast('已生成数据分析');
     }
 
     if (target.dataset.action === 'copy-link') {

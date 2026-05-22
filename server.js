@@ -217,6 +217,213 @@ function buildCsv(survey, responses) {
   return `\uFEFF${lines.join('\n')}`;
 }
 
+function toNumber(value) {
+  if (Array.isArray(value)) return null;
+  const text = normalizeText(value);
+  if (!text) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
+function mean(values) {
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function variance(values) {
+  if (values.length < 2) return null;
+  const avg = mean(values);
+  return values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (values.length - 1);
+}
+
+function std(values) {
+  const value = variance(values);
+  return value === null ? null : Math.sqrt(value);
+}
+
+function round(value, digits = 3) {
+  return value === null || Number.isNaN(value) ? null : Number(value.toFixed(digits));
+}
+
+function frequencies(values, options = []) {
+  const counts = new Map(options.map(option => [option, 0]));
+  for (const value of values) {
+    if (!counts.has(value)) counts.set(value, 0);
+    counts.set(value, counts.get(value) + 1);
+  }
+  const total = values.length || 1;
+  return Array.from(counts.entries()).map(([label, count]) => ({
+    label,
+    count,
+    percent: round((count / total) * 100, 2)
+  }));
+}
+
+function pearson(xValues, yValues) {
+  const pairs = xValues
+    .map((x, index) => [x, yValues[index]])
+    .filter(([x, y]) => x !== null && y !== null);
+
+  if (pairs.length < 3) return null;
+  const xs = pairs.map(([x]) => x);
+  const ys = pairs.map(([, y]) => y);
+  const xMean = mean(xs);
+  const yMean = mean(ys);
+  const numerator = pairs.reduce((sum, [x, y]) => sum + (x - xMean) * (y - yMean), 0);
+  const xDenominator = Math.sqrt(xs.reduce((sum, x) => sum + (x - xMean) ** 2, 0));
+  const yDenominator = Math.sqrt(ys.reduce((sum, y) => sum + (y - yMean) ** 2, 0));
+  const denominator = xDenominator * yDenominator;
+  return denominator === 0 ? null : numerator / denominator;
+}
+
+function cronbachAlpha(matrix) {
+  const completeRows = matrix.filter(row => row.every(value => value !== null));
+  if (completeRows.length < 2 || !completeRows[0] || completeRows[0].length < 2) return null;
+
+  const itemCount = completeRows[0].length;
+  const columns = Array.from({ length: itemCount }, (_, columnIndex) => completeRows.map(row => row[columnIndex]));
+  const itemVarianceSum = columns.reduce((sum, column) => sum + (variance(column) || 0), 0);
+  const totalScores = completeRows.map(row => row.reduce((sum, value) => sum + value, 0));
+  const totalVariance = variance(totalScores);
+  if (!totalVariance) return null;
+
+  return (itemCount / (itemCount - 1)) * (1 - itemVarianceSum / totalVariance);
+}
+
+function buildAnalysis(survey, responses) {
+  const questions = survey.questions.map(question => {
+    const rawValues = responses.map(response => response.answers?.[question.id]);
+    const answered = rawValues.filter(value => Array.isArray(value) ? value.length > 0 : normalizeText(value)).length;
+    const base = {
+      id: question.id,
+      title: question.title,
+      type: question.type,
+      answered,
+      missing: responses.length - answered
+    };
+
+    if (question.type === 'multiple') {
+      const selected = rawValues.flatMap(value => Array.isArray(value) ? value : []);
+      return {
+        ...base,
+        options: question.options,
+        frequencies: frequencies(selected, question.options).map(item => ({
+          ...item,
+          responsePercent: responses.length ? round((item.count / responses.length) * 100, 2) : 0
+        }))
+      };
+    }
+
+    if (question.type === 'single' || question.type === 'rating') {
+      const values = rawValues.map(value => normalizeText(value)).filter(Boolean);
+      const numericValues = rawValues.map(toNumber).filter(value => value !== null);
+      return {
+        ...base,
+        options: question.options,
+        frequencies: frequencies(values, question.options),
+        numeric: numericValues.length ? {
+          count: numericValues.length,
+          mean: round(mean(numericValues)),
+          std: round(std(numericValues)),
+          min: Math.min(...numericValues),
+          max: Math.max(...numericValues)
+        } : null
+      };
+    }
+
+    const values = rawValues.map(value => normalizeText(value)).filter(Boolean);
+    const numericValues = rawValues.map(toNumber).filter(value => value !== null);
+    const topValues = Array.from(values.reduce((acc, value) => {
+      acc.set(value, (acc.get(value) || 0) + 1);
+      return acc;
+    }, new Map()).entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, count]) => ({ label, count }));
+
+    return {
+      ...base,
+      uniqueCount: new Set(values).size,
+      topValues,
+      numeric: numericValues.length ? {
+        count: numericValues.length,
+        mean: round(mean(numericValues)),
+        std: round(std(numericValues)),
+        min: Math.min(...numericValues),
+        max: Math.max(...numericValues)
+      } : null
+    };
+  });
+
+  const numericQuestions = survey.questions.filter(question => {
+    if (question.type === 'multiple') return false;
+    const numericCount = responses.map(response => toNumber(response.answers?.[question.id])).filter(value => value !== null).length;
+    return numericCount >= Math.max(2, Math.ceil(responses.length * 0.5));
+  });
+  const numericMatrix = responses.map(response => numericQuestions.map(question => toNumber(response.answers?.[question.id])));
+  const numericQuestionSummaries = numericQuestions.map(question => {
+    const values = responses.map(response => toNumber(response.answers?.[question.id])).filter(value => value !== null);
+    return {
+      id: question.id,
+      title: question.title,
+      count: values.length,
+      mean: round(mean(values)),
+      std: round(std(values)),
+      min: values.length ? Math.min(...values) : null,
+      max: values.length ? Math.max(...values) : null
+    };
+  });
+
+  const correlations = [];
+  for (let i = 0; i < numericQuestions.length; i++) {
+    for (let j = i + 1; j < numericQuestions.length; j++) {
+      const xValues = responses.map(response => toNumber(response.answers?.[numericQuestions[i].id]));
+      const yValues = responses.map(response => toNumber(response.answers?.[numericQuestions[j].id]));
+      correlations.push({
+        x: numericQuestions[i].title,
+        y: numericQuestions[j].title,
+        r: round(pearson(xValues, yValues))
+      });
+    }
+  }
+
+  const alpha = cronbachAlpha(numericMatrix);
+  const insights = [];
+  if (!responses.length) {
+    insights.push('当前问卷还没有回复，暂时无法生成统计结果。');
+  } else {
+    insights.push(`共收集 ${responses.length} 份回复，已完成基础频数和描述性统计。`);
+  }
+  if (numericQuestions.length >= 2) {
+    insights.push(`检测到 ${numericQuestions.length} 个可数值化题项，已计算 Cronbach's alpha 和题项相关。`);
+  } else {
+    insights.push('数值题项少于 2 个，暂不计算信度和相关矩阵。评分题或数字填空题可用于更完整的量表分析。');
+  }
+  if (alpha !== null) {
+    insights.push(alpha >= 0.8 ? '量表内部一致性较好。' : alpha >= 0.7 ? '量表内部一致性可接受。' : '量表内部一致性偏低，建议检查题项设计或增加样本量。');
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    survey: summarizeSurvey(survey, responses.length),
+    overview: {
+      responseCount: responses.length,
+      questionCount: survey.questions.length,
+      numericQuestionCount: numericQuestions.length,
+      completionRate: responses.length ? round((questions.reduce((sum, q) => sum + q.answered, 0) / (responses.length * survey.questions.length)) * 100, 2) : 0
+    },
+    questions,
+    numericQuestions: numericQuestionSummaries,
+    reliability: {
+      cronbachAlpha: round(alpha),
+      itemCount: numericQuestions.length,
+      sampleSize: numericMatrix.filter(row => row.every(value => value !== null)).length
+    },
+    correlations,
+    insights
+  };
+}
+
 async function serveStatic(req, res, pathname) {
   const requested = pathname === '/' ? '/index.html' : pathname;
   const decoded = decodeURIComponent(requested);
@@ -311,6 +518,11 @@ async function handleApi(req, res, pathname) {
   if (req.method === 'GET' && action === 'responses') {
     const responses = db.responses.filter(response => response.surveyId === id);
     return sendJson(res, 200, responses);
+  }
+
+  if (req.method === 'GET' && action === 'analysis') {
+    const responses = db.responses.filter(response => response.surveyId === id);
+    return sendJson(res, 200, buildAnalysis(survey, responses));
   }
 
   if (req.method === 'GET' && action === 'export.csv') {

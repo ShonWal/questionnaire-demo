@@ -126,3 +126,22 @@ Get-Content C:\questionnaire-demo\logs\server.log -Tail 100
 Stop-ScheduledTask -TaskName QuestionnaireDemo
 Start-ScheduledTask -TaskName QuestionnaireDemo
 ```
+
+## 数据分析功能
+
+问卷管理卡片中新增“数据分析”按钮。该功能参考 `questionnaire-stats` skill 的分析思路，在网页内直接对当前问卷回复做轻量统计：
+
+- 描述性统计：回复数、完成率、每题有效回答/缺失、频数和百分比。
+- 文本题统计：不同答案数量和高频文本答案。
+- 单选/多选统计：选项次数和比例。
+- 评分/数字题统计：均值、标准差、最小值、最大值。
+- 信度分析：当存在至少 2 个可数值题项时计算 Cronbach's alpha。
+- 相关性分析：当存在至少 2 个可数值题项时计算 Pearson r。
+
+接口：
+
+```text
+GET /api/surveys/:id/analysis
+```
+
+说明：当前网页版本采用 Node.js 内置实现，适合在线即时分析；`questionnaire-stats` 原始 Python skill 仍适合离线 Excel/YAML 的完整学术分析流程。
