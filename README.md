@@ -94,3 +94,35 @@ pm2 save
 - 增加题目排序、复制题目、逻辑跳转和更多题型。
 - 将文件数据库升级为 SQLite/PostgreSQL。
 - 增加 Docker Compose、HTTPS、自动备份和 GitHub Actions 自动部署。
+
+## Windows Server 一键部署
+
+适用于阿里云 Windows Server 2022。请先用 RDP 登录服务器，用“管理员身份”打开 PowerShell，然后运行：
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+irm https://raw.githubusercontent.com/ShonWal/questionnaire-demo/main/deploy/windows-setup.ps1 | iex
+```
+
+脚本会自动完成：
+
+- 下载 Node.js 便携版到 `C:\questionnaire-demo\tools\node`
+- 从 GitHub 下载最新版应用到 `C:\questionnaire-demo\app`
+- 创建数据目录 `C:\questionnaire-demo\data`
+- 注册 Windows 启动任务 `QuestionnaireDemo`
+- 打开 Windows 防火墙 TCP `3000` 端口
+
+如果公网无法访问 `http://47.108.189.6:3000`，请在阿里云 ECS 安全组入方向放行 TCP `3000`，授权对象可临时设置为 `0.0.0.0/0`。
+
+查看运行日志：
+
+```powershell
+Get-Content C:\questionnaire-demo\logs\server.log -Tail 100
+```
+
+重启服务：
+
+```powershell
+Stop-ScheduledTask -TaskName QuestionnaireDemo
+Start-ScheduledTask -TaskName QuestionnaireDemo
+```
