@@ -1,0 +1,115 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>问卷设计与发布 Demo</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">SurveyLab Demo</p>
+        <h1>像问卷星一样，快速设计、发放、回收问卷</h1>
+        <p class="hero-copy">这是一个简洁全栈 demo：支持自定义题目、生成填写链接、查看回复、导出 CSV。</p>
+      </div>
+      <div class="hero-card">
+        <span class="metric" id="surveyCount">0</span>
+        <span>份问卷</span>
+        <span class="metric" id="responseCount">0</span>
+        <span>条回复</span>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="页面切换">
+      <button class="tab active" data-view="builder">设计问卷</button>
+      <button class="tab" data-view="dashboard">问卷管理</button>
+      <button class="tab" data-view="fill">填写预览</button>
+    </nav>
+
+    <main>
+      <section id="builderView" class="view active">
+        <div class="panel split">
+          <form id="surveyForm" class="builder-form">
+            <div class="section-title">
+              <span>01</span>
+              <h2>基础信息</h2>
+            </div>
+            <label>
+              问卷标题
+              <input id="surveyTitle" required placeholder="例如：培训满意度调查">
+            </label>
+            <label>
+              问卷说明
+              <textarea id="surveyDescription" rows="3" placeholder="告诉填写者本问卷的用途"></textarea>
+            </label>
+
+            <div class="section-title">
+              <span>02</span>
+              <h2>题目设计</h2>
+            </div>
+            <div id="questions" class="question-list"></div>
+            <div class="button-row wrap">
+              <button type="button" class="secondary" data-add-type="short">单行文本</button>
+              <button type="button" class="secondary" data-add-type="textarea">长文本</button>
+              <button type="button" class="secondary" data-add-type="single">单选题</button>
+              <button type="button" class="secondary" data-add-type="multiple">多选题</button>
+              <button type="button" class="secondary" data-add-type="rating">评分题</button>
+            </div>
+
+            <div class="button-row">
+              <button type="submit" class="primary">保存并发布</button>
+              <button type="button" id="resetBuilder" class="ghost">清空</button>
+            </div>
+          </form>
+
+          <aside class="preview-card">
+            <p class="eyebrow">Live Preview</p>
+            <h2 id="previewTitle">未命名问卷</h2>
+            <p id="previewDescription">添加标题、说明和题目后，这里会实时预览。</p>
+            <div id="previewQuestions" class="preview-questions"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="dashboardView" class="view">
+        <div class="panel">
+          <div class="section-title between">
+            <div>
+              <span>03</span>
+              <h2>问卷管理</h2>
+            </div>
+            <button id="refreshDashboard" class="secondary">刷新</button>
+          </div>
+          <div id="surveyList" class="survey-grid"></div>
+        </div>
+
+        <div id="responsesPanel" class="panel hidden">
+          <div class="section-title between">
+            <div>
+              <span>04</span>
+              <h2 id="responsesTitle">回复信息</h2>
+            </div>
+            <a id="exportLink" class="primary link-button" href="#">导出 CSV</a>
+          </div>
+          <div id="responsesTable" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <section id="fillView" class="view">
+        <div class="panel narrow">
+          <div id="fillEmpty" class="empty-state">
+            <h2>选择一份问卷开始填写</h2>
+            <p>在“问卷管理”里点击填写链接，或直接访问分享地址。</p>
+          </div>
+          <form id="fillForm" class="fill-form hidden"></form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

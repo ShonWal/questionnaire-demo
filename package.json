@@ -1,0 +1,23 @@
+﻿{
+  "name": "questionnaire-demo",
+  "version": "0.1.0",
+  "description": "A compact Wenjuanxing-like questionnaire builder demo with Node.js backend and vanilla frontend.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test:api": "node scripts/api-smoke-test.js"
+  },
+  "keywords": [
+    "survey",
+    "questionnaire",
+    "csv",
+    "demo"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
